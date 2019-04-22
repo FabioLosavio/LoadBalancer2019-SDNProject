@@ -1,0 +1,31 @@
+Metadata-Version: 2.1
+Name: os-ryu
+Version: 0.0.1
+Summary: Component-based Software-defined Networking
+Home-page: https://docs.openstack.org/os-ryu/latest/
+Author: OpenStack
+Author-email: openstack-dev@lists.openstack.org
+License: UNKNOWN
+Platform: UNKNOWN
+Classifier: Programming Language :: Python
+Classifier: Programming Language :: Python :: 2
+Classifier: Programming Language :: Python :: 2.7
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.5
+Classifier: License :: OSI Approved :: Apache Software License
+Classifier: Operating System :: POSIX :: Linux
+Description-Content-Type: text/markdown
+
+======
+os-ryu
+======
+
+A component-based software defined networking framework in OpenStack.
+
+* License: Apache License, Version 2.0
+* Documentation: https://docs.openstack.org/os-ryu/latest/
+* Source: https://git.openstack.org/cgit/openstack/os-ryu
+* Bugs: https://bugs.launchpad.net/os-ryu
+* Release Notes: https://docs.openstack.org/releasenotes/os-ryu
+
+

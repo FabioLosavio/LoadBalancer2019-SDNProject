@@ -1,0 +1,4 @@
+
+        [console_scripts]
+        topology-yaml=topology.cli:cli
+    

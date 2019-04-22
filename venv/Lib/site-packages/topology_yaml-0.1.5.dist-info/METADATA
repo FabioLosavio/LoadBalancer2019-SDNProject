@@ -1,0 +1,99 @@
+Metadata-Version: 2.0
+Name: topology-yaml
+Version: 0.1.5
+Summary: Opinionated topology file generator and parser
+Home-page: UNKNOWN
+Author: Lumina NetDev
+Author-email: oss-dev@luminanetworks.com
+License: UNKNOWN
+Platform: UNKNOWN
+Classifier: Development Status :: 2 - Pre-Alpha
+Classifier: Programming Language :: Python
+Classifier: Programming Language :: Python :: 2
+Classifier: Programming Language :: Python :: 2.7
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.4
+Classifier: Programming Language :: Python :: 3.5
+Requires-Dist: PyYAML
+Requires-Dist: click
+Requires-Dist: click-plugins
+Requires-Dist: coloredlogs
+
+Topology-Yaml
+=============
+
+.. image:: https://img.shields.io/pypi/v/topology-yaml.svg
+    :target: https://pypi.python.org/pypi/topology-yaml
+    :alt: Latest PyPI version
+
+Opinionated topology file generator and parser.
+
+
+Requirements
+~~~~~~~~~~~~
+
+- Python 2.7
+
+Installation
+~~~~~~~~~~~~
+
+>From Source:
+
+::
+
+$ git clone https://github.com/lumina-networks/topology-yaml
+$ cd topology-yaml
+$ sudo pip install .
+
+>From PyPi
+
+::
+
+$ pip install topology-yaml
+
+
+Usage
+~~~~~
+
+**topology-yaml** will be the command after installation. For example:
+::
+
+    $ Usage: topology-yaml [OPTIONS] COMMAND [ARGS]...
+
+    Options:
+      --help  Show this message and exit.
+
+    Commands:
+      create  Create Topology File
+      delete  Delete Topology File
+      read    Read Topology File
+
+
+Documentation
+~~~~~~~~~~~~~
+
+To build documentation:
+
+::
+
+$ make documentation
+
+Or
+
+::
+
+$ cd docs
+$ make html
+
+
+Licence
+-------
+
+MIT
+
+Authors
+-------
+
+`topology-yaml` was written by `Lumina NetDev <oss-dev@luminanetworks.com>`_.
+
+

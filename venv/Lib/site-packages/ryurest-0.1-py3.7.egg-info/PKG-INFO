@@ -1,0 +1,15 @@
+Metadata-Version: 1.1
+Name: ryurest
+Version: 0.1
+Summary: An unofficial Python library to interact with the REST API of the Ryu SDN Controller.
+Home-page: https://github.com/nathancatania/ryurest
+Author: Nathan Catania
+Author-email: nathan@nathancatania.com
+License: Apache 2.0
+Description: UNKNOWN
+Keywords: ryu sdn rest api controller python
+Platform: UNKNOWN
+Classifier: Development Status :: 4 - Beta
+Classifier: License :: OSI Approved :: Apache Software License
+Classifier: Programming Language :: Python :: 2.7
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
