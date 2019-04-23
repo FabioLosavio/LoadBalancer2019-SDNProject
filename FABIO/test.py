@@ -4,6 +4,7 @@ from ryu.ofproto import ofproto_v1_3
 from ryu.controller.handler import MAIN_DISPATCHER, CONFIG_DISPATCHER
 from ryu.controller.handler import set_ev_cls
 from ryu.lib.packet import packet, ethernet, ipv4, arp  # permettono di analizzari i dati all'interno del pacchtto
+from ryu.topology.api import get_all_link, get_all_host, get_all_switch
 
 
 class LoadBalancer(app_manager.RyuApp):
