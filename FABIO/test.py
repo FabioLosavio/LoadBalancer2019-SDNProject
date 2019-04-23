@@ -20,8 +20,7 @@ class LoadBalancer(app_manager.RyuApp):
         self.logger.info('######packet in')
         msg = event.msg  # oggetto che contiene la struttura dati del pacchetto in ingresso
         datapath = msg.datapath  # ID dello switch da cui arriva il pacchetto
-        ofpversion = datapath.ofproto  # versione di ofp usata nell'handshake (versione attesa 1.3) (dovrebbe contenere anche delle azioni tipo OFP_FLOOD)
-
+        ofpversion = datapath.ofproto  # versione di ofp usata nell'handshake (versione attesa 1.3)
         # estraggo i dati dal pacchetto in ingresso
         pacchetto = packet.Packet(msg.data)
 
@@ -30,24 +29,19 @@ class LoadBalancer(app_manager.RyuApp):
         # escludo i pacchetti ipv6 di sincronizzazione trasmessi al setup della rete
         if ethframe.ethertype != 34525:
             self.logger.info('eht frame: %s', ethframe)
-
-            # estrae il frame ip se il pacchetto ethernet contiene un pacchetto ip (ethertype = 0x0800)
             if ethframe.ethertype == 2048:
-                self.logger.info('FRAME IP')
+                self.logger.info('IP FRAME')
                 ipframe = pacchetto.get_protocol(ipv4.ipv4)
                 self.logger.info('src: %s   dst: %s', ipframe.src, ipframe.dst)
-            # estrae il frame arp se è il pacchetto ricevuto è un pacchetto arp (ethertype = 0x0806)
             elif ethframe.ethertype == 2054:
-                self.logger.info('FRAME ARP')
+                self.logger.info('ARP FRAME')
                 arpframe = pacchetto.get_protocol(arp.arp)
                 self.logger.info('src: IP:%s MAC:%s  dst: IP:%s MAC:%s',
                                  arpframe.src_ip, arpframe.src_mac, arpframe.dst_ip, arpframe.dst_mac)
             else:
                 self.logger.info('pacchetto non gestito')
-
         # manda il pacchetto intercettato senza modificarlo
         datapath.send_msg(msg)
-
 
     @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)
     def switch_features_handler(self, ev):
@@ -70,8 +64,7 @@ class LoadBalancer(app_manager.RyuApp):
 
         parser = datapath.ofproto_parser
         # creazione della lista di istruzioni da eseguire
-        inst = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS,
-                                             actions)]
+        inst = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, actions)]
         # creazione del messaggio da mandare in out
         out = parser.OFPFlowMod(datapath=datapath, priority=priority,
                                 match=match, instructions=inst)
