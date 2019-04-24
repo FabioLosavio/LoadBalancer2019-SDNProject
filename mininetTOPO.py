@@ -28,7 +28,7 @@ class LBNet(Topo):
         loadbalancer = self.addSwitch('s2lb')
 
         # host server sulla rete 10.0.1.0/24
-        # indirizzo di gruppo 4.3.2.1/24
+        # indirizzo di gruppo 10.0.2.0/24
         server1 = self.addHost('hs1', ip = '10.0.1.1/16')
         server2 = self.addHost('hs2', ip = '10.0.1.2/16')
         server3 = self.addHost('hs3', ip = '10.0.1.3/16')
