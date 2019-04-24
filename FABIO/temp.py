@@ -53,3 +53,20 @@ def packet_in_handler(self, event):
     if ethframe.ethertype == 0x0800:
         ipframe = pacchetto.get_protocol(ipv4.ipv4)
         self.logger.info('src: %s   dst: %s', ipframe.src, ipframe.dst)
+
+
+
+
+
+
+
+
+
+
+
+
+
+if datapath.id == 1 and ipframe.dst == '10.0.2.0' :
+    actions = [parser.OFPActionOutput(4)]
+    match = parser.OFPMatch(ipv4_dst='10.0.2.0')
+    add
