@@ -11,7 +11,11 @@ class LoadBalancer(app_manager.RyuApp):
 
     def __init__(self, *args, **kwargs):
         super(LoadBalancer, self).__init__(*args, **kwargs)
-        self.mac_to_port = {}   # dizionario
+        # strutture dati
+        self.mac_to_port = {}  # dizionario che associa l'indirizzo mac alla porta di uscita per ogni switch
+        self.round_robin_counter = 0  # contatore che permette di fare round robin (counter % numero_server)
+        self.LB_mac = 'AA:AA:AA:AA:AA:AA'  # mac associato al load balancer
+        self.LB_ip = '10.0.2.0'  # ip associato al load balancer
         self.logger.info('######inizializzazione completata')
 
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
@@ -81,12 +85,13 @@ class LoadBalancer(app_manager.RyuApp):
         # else:
         #      self.logger.info('pacchetto non gestito\n\n')
 
+    # funzione che crea e aggiorna il dizionario mac_to_port (matrice --> [switch_id][mac_source] = porta_ingresso)
     def set_mac_to_port(self, datapath, ethframe, porta_ingresso):
-        id = datapath.id
-        destination = ethframe.dst
+        switch_id = datapath.id
         source = ethframe.src
 
-        self.mac_to_port.setdefault(id, {})
-        self.mac_to_port[id][source] = porta_ingresso
+        self.mac_to_port.setdefault(switch_id, {})
+        self.mac_to_port[switch_id][source] = porta_ingresso
 
         self.logger.info(self.mac_to_port)
+        self.logger.info('\n\n')

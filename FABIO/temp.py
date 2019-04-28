@@ -118,3 +118,25 @@ def packet_in_handler(self, event):
         '00:00:00:00:00:06': 4,
         '00:00:00:00:00:05': 3,
         '00:00:00:00:00:04': 2}}
+
+
+
+self.mac_to_port = {}   # dizionario che associa l'indirizzo mac alla porta di uscita per ogni switch
+        self.round_robin_counter = 0    # contatore che permette di fare round robin (counter % numero_server)
+        self.LB_mac = 'AA:AA:AA:AA:AA:AA'   # mac associato al load balancer
+        self.LB_ip = '10.0.2.0'     # ip associato al load balancer
+        self.logger.info('######inizializzazione completata')
+
+
+self.set_mac_to_port(datapath, ethframe, porta_ingresso)
+
+
+# funzione che crea e aggiorna il dizionario mac_to_port (matrice --> [switch_id][mac_source] = porta_ingresso)
+def set_mac_to_port(self, datapath, ethframe, porta_ingresso):
+    switch_id = datapath.id
+    source = ethframe.src
+
+    self.mac_to_port.setdefault(switch_id, {})  # aggiunge una nuova riga ogni volta che c'è un nuovo switch_id
+    self.mac_to_port[switch_id][source] = porta_ingresso  # associa la porta al mac sorgente
+
+    self.logger.info(self.mac_to_port)  # stampa a schermo la tabella aggiornata
