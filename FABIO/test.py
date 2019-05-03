@@ -12,10 +12,12 @@ class LoadBalancer(app_manager.RyuApp):
     def __init__(self, *args, **kwargs):
         super(LoadBalancer, self).__init__(*args, **kwargs)
         # strutture dati
-        self.mac_to_port = {}  # dizionario che associa l'indirizzo mac alla porta di uscita per ogni switch
+        self.topologia = {}  # dizionario che associa l'indirizzo mac alla porta di uscita per ogni switch
         self.round_robin_counter = 0  # contatore che permette di fare round robin (counter % numero_server)
         self.LB_mac = 'AA:AA:AA:AA:AA:AA'  # mac associato al load balancer
         self.LB_ip = '10.0.2.0'  # ip associato al load balancer
+        self.num_server = 3  # indica il numero di server su cui fare round robin
+        self.lista_server = ['00:00:00:00:00:04', '00:00:00:00:00:05', '00:00:00:00:00:06']
         self.logger.info('######inizializzazione completata')
 
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
@@ -25,17 +27,18 @@ class LoadBalancer(app_manager.RyuApp):
         datapath = msg.datapath  # ID dello switch da cui arriva il pacchetto
         porta_ingresso = msg.match['in_port']
         pacchetto = packet.Packet(msg.data)
-
-        ethframe = pacchetto.get_protocol(ethernet.ethernet)
-
         ofpversion = datapath.ofproto  # versione di ofp usata nell'handshake (versione attesa 1.3)
         parser = datapath.ofproto_parser
 
-        self.set_mac_to_port(datapath, ethframe, porta_ingresso)
-        self.get_protocols_info(pacchetto, datapath, porta_ingresso, ethframe)
+        ethframe = pacchetto.get_protocol(ethernet.ethernet)
+
+        self.set_topologia(pacchetto, porta_ingresso, datapath)
+
+        # self.set_mac_to_port(datapath, ethframe, porta_ingresso)
+        # self.get_frame(pacchetto, datapath, porta_ingresso, ethframe)
 
         # manda il pacchetto intercettato senza modificarlo
-        datapath.send_msg(msg)
+        # datapath.send_msg(msg)
 
     @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)
     def switch_features_handler(self, ev):
@@ -65,7 +68,7 @@ class LoadBalancer(app_manager.RyuApp):
         datapath.send_msg(out)
 
     # funzione che stampa a schermo le informazioni dei protocolli contenuti in un pacchetto
-    def get_protocols_info(self, pacchetto, datapath, porta_ingresso, ethframe):
+    def get_frame(self, pacchetto, datapath, porta_ingresso, ethframe):
         # self.logger.info('eht frame: %s', ethframe)
 
         # estraggo il fame di livello 3 trasortato
@@ -75,6 +78,8 @@ class LoadBalancer(app_manager.RyuApp):
             ipframe = pacchetto.get_protocol(ipv4.ipv4)
             self.logger.info('src: %s   dst: %s\n\n', ipframe.src, ipframe.dst)
 
+            return ipframe
+
         elif ethframe.ethertype == 2054:  # frame arp
             self.logger.info('ARP FRAME')
             arpframe = pacchetto.get_protocol(arp.arp)
@@ -82,16 +87,36 @@ class LoadBalancer(app_manager.RyuApp):
             self.logger.info('src: IP:%s MAC:%s  dst: IP:%s MAC:%s\n\n',
                              arpframe.src_ip, arpframe.src_mac, arpframe.dst_ip, arpframe.dst_mac)
 
+            return arpframe
+
         # else:
         #      self.logger.info('pacchetto non gestito\n\n')
 
-    # funzione che crea e aggiorna il dizionario mac_to_port (matrice --> [switch_id][mac_source] = porta_ingresso)
-    def set_mac_to_port(self, datapath, ethframe, porta_ingresso):
-        switch_id = datapath.id
-        source = ethframe.src
 
-        self.mac_to_port.setdefault(switch_id, {})
-        self.mac_to_port[switch_id][source] = porta_ingresso
 
-        self.logger.info(self.mac_to_port)
+    def set_topologia(self, pacchetto, porta_ingresso, datapath):
+        ethframe = pacchetto.get_protocol(ethernet.ethernet)
+
+        if ethframe.ethertype == 2048:  # frame ip
+            frame = pacchetto.get_protocol(ipv4.ipv4)
+            ip = frame.src
+
+        elif ethframe.ethertype == 2054:  # frame arp
+            frame = pacchetto.get_protocol(arp.arp)
+            ip = frame.src_ip
+        else:
+            ip = 'not_defined'
+
+        self.topologia.setdefault(datapath.id, {})
+        self.topologia[datapath.id][ethframe.src] = [porta_ingresso, ip]
+        self.logger.info(self.topologia)
         self.logger.info('\n\n')
+
+    def round_robin(self):
+        server_scelto = self.round_robin_counter % self.num_server  # resto della divisione intera
+        self.round_robin_counter = self.round_robin_counter + 1
+
+        if self.round_robin_counter == 3000:    # serve a non avere un contatore troppo grande
+            self.round_robin_counter = 0
+
+        return self.lista_server[server_scelto]
