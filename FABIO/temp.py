@@ -131,3 +131,24 @@ def packet_in_handler(self, event):
         self.logger.info('\n\n')
 
 
+
+
+        if datapath.id == 1:
+            if self.lista_server[0] in self.topologia[datapath.id]:
+                porta_LB = self.topologia[datapath.id]['00:00:00:00:00:04'][0]
+                self.logger.info(porta_LB)
+
+    if ethframe.ethertype == 2054:  # se il pacchetto è arp
+        arpframe = pacchetto.get_protocol(arp.arp)
+
+        if arpframe.dst_ip == self.LB_ip and arpframe.opcode == 1:
+            server_mac = self.round_robin()
+            server_port = self.topologia[datapath.id][server_mac][0]
+            server_ip = self.topologia[datapath.id][server_mac][1]
+
+    self.get_frame(pacchetto, datapath, porta_ingresso, ethframe)
+    manda il pacchetto intercettato senza modificarlo
+    datapath.send_msg(msg)
+
+
+self.topologia[datapath.id][ethframe.src] = [porta_ingresso, ip]

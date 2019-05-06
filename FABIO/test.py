@@ -27,18 +27,37 @@ class LoadBalancer(app_manager.RyuApp):
         datapath = msg.datapath  # ID dello switch da cui arriva il pacchetto
         porta_ingresso = msg.match['in_port']
         pacchetto = packet.Packet(msg.data)
-        ofpversion = datapath.ofproto  # versione di ofp usata nell'handshake (versione attesa 1.3)
+        ofproto = datapath.ofproto  # versione di ofp usata nell'handshake (versione attesa 1.3)
         parser = datapath.ofproto_parser
 
         ethframe = pacchetto.get_protocol(ethernet.ethernet)
 
         self.set_topologia(pacchetto, porta_ingresso, datapath)
 
-        # self.set_mac_to_port(datapath, ethframe, porta_ingresso)
-        # self.get_frame(pacchetto, datapath, porta_ingresso, ethframe)
+        if ethframe.ethertype == 2054:  # se ho un pacchetto arp
+            arpframe = pacchetto.get_protocol(arp.arp)
 
-        # manda il pacchetto intercettato senza modificarlo
-        # datapath.send_msg(msg)
+            if arpframe.dst_ip == self.LB_ip and arpframe.opcode == 1:
+                server_mac = self.round_robin()
+                server_port = self.topologia[datapath.id][server_mac][0]
+                server_ip = self.topologia[datapath.id][server_mac][1]
+
+                src_mac = arpframe.src_mac
+                src_ip = arpframe.src_ip
+
+                reply = packet.Packet()
+                ethframe_reply = ethernet.ethernet(server_mac, src_mac, 2054)  #
+                arp_reply_pkt = arp.arp(2048, 6, 4, 2, server_mac, server_ip, src_mac, src_ip)  #
+                reply.add_protocol(ethframe_reply)
+                reply.add_protocol(arp_reply_pkt)
+                reply.serialize()
+
+                actions = [parser.OFPActionOutput(porta_ingresso)]
+                out = parser.OFPPacketOut(datapath=datapath, in_port=ofproto.OFPP_ANY, data=reply.data, actions=actions)
+                datapath.send_msg(out)
+
+
+        self.get_frame(pacchetto, datapath, porta_ingresso, ethframe)
 
     @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)
     def switch_features_handler(self, ev):
@@ -51,6 +70,7 @@ class LoadBalancer(app_manager.RyuApp):
         match = parser.OFPMatch()
         actions = [parser.OFPActionOutput(ofproto.OFPP_CONTROLLER, ofproto.OFPCML_NO_BUFFER),
                    parser.OFPActionOutput(ofproto.OFPP_FLOOD)]
+
         # chiamata alla funzione add_flow che crea una flow rule con i parametri inseriti
         self.add_flow(datapath, 0, match, actions)
 
@@ -92,15 +112,12 @@ class LoadBalancer(app_manager.RyuApp):
         # else:
         #      self.logger.info('pacchetto non gestito\n\n')
 
-
-
     def set_topologia(self, pacchetto, porta_ingresso, datapath):
         ethframe = pacchetto.get_protocol(ethernet.ethernet)
 
         if ethframe.ethertype == 2048:  # frame ip
             frame = pacchetto.get_protocol(ipv4.ipv4)
             ip = frame.src
-
         elif ethframe.ethertype == 2054:  # frame arp
             frame = pacchetto.get_protocol(arp.arp)
             ip = frame.src_ip
