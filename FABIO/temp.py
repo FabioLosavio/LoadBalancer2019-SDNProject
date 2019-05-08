@@ -152,3 +152,86 @@ def packet_in_handler(self, event):
 
 
 self.topologia[datapath.id][ethframe.src] = [porta_ingresso, ip]
+
+
+
+
+
+
+
+
+
+
+
+
+if datapath.id == 2:
+    if ethframe.ethertype == 2054:  # se ho un pacchetto arp
+        arpframe = pacchetto.get_protocol(arp.arp)
+
+        if arpframe.dst_ip == self.LB_ip and arpframe.opcode == 1:
+            src_mac = arpframe.src_mac  # mac di origine da usare come destinazione nella arp reply
+            src_ip = arpframe.src_ip  # ip di origine da usare come destinazione nella arp reply
+
+            server_mac = self.round_robin()
+            server_port = self.topologia[datapath.id][server_mac][0]
+            server_ip = self.topologia[datapath.id][server_mac][1]
+
+            match1 = parser.OFPMatch(eth_type=2048, eth_src=src_mac, eth_dst=self.LB_mac, ipv4_src=src_ip,
+                                     ipv4_dst=self.LB_ip)
+            actions1 = [parser.OFPActionSetField(ipv4_dst=server_ip),
+                        parser.OFPActionSetField(eth_dst=server_mac),
+                        parser.OFPActionOutput(server_port)]
+            self.add_flow(datapath, 3, match1, actions1)
+
+            match2 = parser.OFPMatch(eth_type=2048, eth_src=server_mac, eth_dst=src_mac, ipv4_src=server_ip,
+                                     ipv4_dst=src_ip)
+            actions2 = [parser.OFPActionSetField(ipv4_src=self.LB_ip),
+                        parser.OFPActionSetField(eth_src=self.LB_mac),
+                        parser.OFPActionOutput(porta_ingresso)]
+            self.add_flow(datapath, 3, match2, actions2)
+
+            self.logger.info('invio ARP REPLY del LB')
+            reply = packet.Packet()  # costruzione di un paccehtto vuoto
+            # costrzione del frame ethernet per la reply (dst,src,ethertype)
+            ethframe_reply = ethernet.ethernet(src_mac, self.LB_mac, 2054)
+            # costruzione del frame arp per la reply
+            arp_reply_pkt = arp.arp(1, 2054, 6, 4, 2, self.LB_mac, self.LB_ip, src_mac, src_ip)  #
+
+            # aggiunta dei protocolli al pacchetto
+            reply.add_protocol(ethframe_reply)
+            reply.add_protocol(arp_reply_pkt)
+            reply.serialize()
+            # uscita del pacchetto preparato sulla porta di ingresso
+            actions = [parser.OFPActionOutput(porta_ingresso)]
+            out = parser.OFPPacketOut(datapath=datapath, in_port=ofproto.OFPP_ANY, data=reply.data,
+                                      actions=actions,
+                                      buffer_id=0xffffffff)
+            datapath.send_msg(out)
+
+
+
+
+
+
+
+
+
+
+
+            self.logger.info('invio ARP REPLY del LB')
+            reply = packet.Packet()  # costruzione di un paccehtto vuoto
+            # costrzione del frame ethernet per la reply (dst,src,ethertype)
+            ethframe_reply = ethernet.ethernet(src_mac, self.LB_mac, 2054)
+            # costruzione del frame arp per la reply
+            arp_reply_pkt = arp.arp(1, 2054, 6, 4, 2, self.LB_mac, self.LB_ip, src_mac, src_ip)  #
+
+            # aggiunta dei protocolli al pacchetto
+            reply.add_protocol(ethframe_reply)
+            reply.add_protocol(arp_reply_pkt)
+            reply.serialize()
+            # uscita del pacchetto preparato sulla porta di ingresso
+            actions = [parser.OFPActionOutput(porta_ingresso)]
+            out = parser.OFPPacketOut(datapath=datapath, in_port=ofproto.OFPP_ANY, data=reply.data,
+                                      actions=actions,
+                                      buffer_id=0xffffffff)
+            datapath.send_msg(out)

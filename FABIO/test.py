@@ -1,3 +1,7 @@
+# Il programma esegue il load balancing su num_server i quali mac sono specificati nella lista lista_server utilizzando
+# la politica di Rund Robin. La topologia da utilizzare si attiva con il comando
+# sudo mn --custom /vagrant/sdn-lab/mininetTOPO.py --topo LBNet --mac --controller=remote
+
 from ryu.base import app_manager
 from ryu.controller import ofp_event
 from ryu.ofproto import ofproto_v1_3
@@ -20,6 +24,8 @@ class LoadBalancer(app_manager.RyuApp):
         self.lista_server = ['00:00:00:00:00:04', '00:00:00:00:00:05', '00:00:00:00:00:06']
         self.logger.info('######inizializzazione completata')
 
+        self.host = []
+
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
     def packet_in_handler(self, event):
         # self.logger.info('######packet in')
@@ -32,59 +38,104 @@ class LoadBalancer(app_manager.RyuApp):
 
         ethframe = pacchetto.get_protocol(ethernet.ethernet)
 
-        self.set_topologia(pacchetto, porta_ingresso, datapath)
+        if ethframe.ethertype != 0x86dd:    # escludo pacchetti ipv6 di configurazione scabiati all'avvio della topologia
 
-        if ethframe.ethertype == 2054:  # se ho un pacchetto arp
-            arpframe = pacchetto.get_protocol(arp.arp)
+            if datapath.id == 2:    # se siamo nello switch 2
 
-            if arpframe.dst_ip == self.LB_ip and arpframe.opcode == 1:
-                server_mac = self.round_robin()
-                server_port = self.topologia[datapath.id][server_mac][0]
-                server_ip = self.topologia[datapath.id][server_mac][1]
+                if ethframe.ethertype == 2054:  # se ho un pacchetto arp
+                    arpframe = pacchetto.get_protocol(arp.arp)
 
-                src_mac = arpframe.src_mac
-                src_ip = arpframe.src_ip
+                    if arpframe.dst_ip == self.LB_ip and arpframe.opcode == 1:
+                        src_mac = arpframe.src_mac  # mac di origine da usare come destinazione nella arp reply
+                        src_ip = arpframe.src_ip  # ip di origine da usare come destinazione nella arp reply
 
-                reply = packet.Packet()
-                ethframe_reply = ethernet.ethernet(server_mac, src_mac, 2054)  #
-                arp_reply_pkt = arp.arp(2048, 6, 4, 2, server_mac, server_ip, src_mac, src_ip)  #
-                reply.add_protocol(ethframe_reply)
-                reply.add_protocol(arp_reply_pkt)
-                reply.serialize()
+                        server_mac = self.round_robin()
+                        server_port = self.topologia[datapath.id][server_mac][0]
+                        server_ip = self.topologia[datapath.id][server_mac][1]
 
-                actions = [parser.OFPActionOutput(porta_ingresso)]
-                out = parser.OFPPacketOut(datapath=datapath, in_port=ofproto.OFPP_ANY, data=reply.data, actions=actions)
-                datapath.send_msg(out)
+                        self.logger.info('invio ARP REPLY del LB')
+                        reply = packet.Packet()  # costruzione di un paccehtto vuoto
+                        # costrzione del frame ethernet per la reply (dst,src,ethertype)
+                        ethframe_reply = ethernet.ethernet(src_mac, self.LB_mac, 2054)
+                        # costruzione del frame arp per la reply
+                        arp_reply_pkt = arp.arp(1, 0x800, 6, 4, 2, self.LB_mac, self.LB_ip, src_mac, src_ip)  #
 
+                        # aggiunta dei protocolli al pacchetto
+                        reply.add_protocol(ethframe_reply)
+                        reply.add_protocol(arp_reply_pkt)
+                        reply.serialize()
+                        self.logger.info(reply)
+                        # uscita del pacchetto preparato sulla porta di ingresso
+                        actions = [parser.OFPActionOutput(porta_ingresso)]
+                        out = parser.OFPPacketOut(datapath=datapath, in_port=ofproto.OFPP_ANY, data=reply.data,
+                                                  actions=actions,
+                                                  buffer_id=0xffffffff)
+                        datapath.send_msg(out)
 
-        self.get_frame(pacchetto, datapath, porta_ingresso, ethframe)
+                        match1 = parser.OFPMatch(eth_type=2048, eth_src=src_mac, eth_dst=self.LB_mac, ipv4_src=src_ip,
+                                                 ipv4_dst=self.LB_ip)
+                        actions1 = [parser.OFPActionSetField(ipv4_dst=server_ip),
+                                    parser.OFPActionSetField(eth_dst=server_mac),
+                                    parser.OFPActionOutput(server_port)]
+                        self.add_flow(datapath, 3, match1, actions1, 120)
+
+                        match2 = parser.OFPMatch(eth_type=2048, eth_src=server_mac, eth_dst=src_mac, ipv4_src=server_ip,
+                                                 ipv4_dst=src_ip)
+                        actions2 = [parser.OFPActionSetField(ipv4_src=self.LB_ip),
+                                    parser.OFPActionSetField(eth_src=self.LB_mac),
+                                    parser.OFPActionOutput(porta_ingresso)]
+                        self.add_flow(datapath, 3, match2, actions2, 120)
+
+            # self.get_frame(pacchetto, datapath, porta_ingresso, ethframe)
+            self.set_topologia(pacchetto, porta_ingresso, datapath)
+
+            if ethframe.ethertype != 34525 and ethframe.dst in self.topologia[datapath.id]:
+                porta_uscita = self.topologia[datapath.id][ethframe.dst][0]
+            else:
+                porta_uscita = ofproto.OFPP_FLOOD
+
+            actions = [parser.OFPActionOutput(porta_uscita)]
+
+            if porta_uscita != ofproto.OFPP_FLOOD:
+                match = parser.OFPMatch(eth_dst=ethframe.dst)
+                self.add_flow(datapath, 2, match, actions, 0)
+
+            out = parser.OFPPacketOut(datapath=datapath, buffer_id=msg.buffer_id, in_port=porta_ingresso,
+                                      actions=actions, data=msg.data)
+            datapath.send_msg(out)
 
     @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)
     def switch_features_handler(self, ev):
         self.logger.info('######switch features handler')
-        datapath = ev.msg.datapath
+        msg = ev.msg
+        datapath = msg.datapath
 
         ofproto = datapath.ofproto
         parser = datapath.ofproto_parser
+
         # match: ANY, actions: out al controllore e FLOOD del pacchetto
         match = parser.OFPMatch()
-        actions = [parser.OFPActionOutput(ofproto.OFPP_CONTROLLER, ofproto.OFPCML_NO_BUFFER),
-                   parser.OFPActionOutput(ofproto.OFPP_FLOOD)]
+        actions = [parser.OFPActionOutput(ofproto.OFPP_CONTROLLER, ofproto.OFPCML_NO_BUFFER)]
 
         # chiamata alla funzione add_flow che crea una flow rule con i parametri inseriti
-        self.add_flow(datapath, 0, match, actions)
+        self.add_flow(datapath, 1, match, actions, 0)
+
+        if datapath.id == 1:
+            match = parser.OFPMatch(eth_type=2048, ipv4_dst='10.0.2.0')
+            actions = [parser.OFPActionOutput(4)]
+            self.add_flow(datapath, 2, match, actions, 0)
 
     # funzione che crea una flow rule nel controllore con i parametri indicati nella chiamata
-    def add_flow(self, datapath, priority, match, actions):
+    def add_flow(self, datapath, priority, match, actions, idle_timeout):
         self.logger.info('######add flow')
         ofproto = datapath.ofproto
-
         parser = datapath.ofproto_parser
+
         # creazione della lista di istruzioni da eseguire
         inst = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, actions)]
         # creazione del messaggio da mandare in out
         out = parser.OFPFlowMod(datapath=datapath, priority=priority,
-                                match=match, instructions=inst)
+                                match=match, instructions=inst, idle_timeout=idle_timeout)
         datapath.send_msg(out)
 
     # funzione che stampa a schermo le informazioni dei protocolli contenuti in un pacchetto
@@ -122,18 +173,19 @@ class LoadBalancer(app_manager.RyuApp):
             frame = pacchetto.get_protocol(arp.arp)
             ip = frame.src_ip
         else:
-            ip = 'not_defined'
+            ip = None
 
         self.topologia.setdefault(datapath.id, {})
         self.topologia[datapath.id][ethframe.src] = [porta_ingresso, ip]
-        self.logger.info(self.topologia)
-        self.logger.info('\n\n')
+
+        # self.logger.info(self.topologia)
+        # self.logger.info('\n\n')
 
     def round_robin(self):
         server_scelto = self.round_robin_counter % self.num_server  # resto della divisione intera
         self.round_robin_counter = self.round_robin_counter + 1
 
-        if self.round_robin_counter == 3000:    # serve a non avere un contatore troppo grande
+        if self.round_robin_counter == 3000:  # serve a non avere un contatore troppo grande
             self.round_robin_counter = 0
 
         return self.lista_server[server_scelto]
