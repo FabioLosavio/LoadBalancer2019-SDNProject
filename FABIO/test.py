@@ -57,7 +57,9 @@ class LoadBalancer(app_manager.RyuApp):
                         reply = packet.Packet()  # costruzione di un paccehtto vuoto
                         # costrzione del frame ethernet per la reply (dst,src,ethertype)
                         ethframe_reply = ethernet.ethernet(src_mac, self.LB_mac, 2054)
-                        # costruzione del frame arp per la reply
+                        # costruzione del frame arp per la reply i parametri inseriti sono:
+                        # (1 -> hwtype per ethernet, 0x800 -> proto per indicare IP, 6 -> lunghezza indirizzo MAC,
+                        # 4 -> lunghezza indirizzo IP, 2 -> opcode per indicare arp reply, src_mac, src_ip, dst_mac, dst_ip)
                         arp_reply_pkt = arp.arp(1, 0x800, 6, 4, 2, self.LB_mac, self.LB_ip, src_mac, src_ip)  #
 
                         # aggiunta dei protocolli al pacchetto
