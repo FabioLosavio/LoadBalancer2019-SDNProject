@@ -1,12 +1,12 @@
 # Il programma esegue il load balancing su num_server i quali mac sono specificati nella lista lista_server utilizzando
-# la politica di Rund Robin. La topologia da utilizzare si attiva con il comando
+# la politica di Round Robin. La topologia da utilizzare si attiva con il comando
 # sudo mn --custom /vagrant/sdn-lab/mininetTOPO.py --topo LBNet --mac --controller=remote
 
-from ryu.base import app_manager
-from ryu.controller import ofp_event
-from ryu.ofproto import ofproto_v1_3
-from ryu.controller.handler import MAIN_DISPATCHER, CONFIG_DISPATCHER
-from ryu.controller.handler import set_ev_cls
+from ryu.base import app_manager    # elementi di funzionamento di ryu
+from ryu.controller import ofp_event    # eventi openflow
+from ryu.ofproto import ofproto_v1_3    # versione di protocollo
+from ryu.controller.handler import MAIN_DISPATCHER, CONFIG_DISPATCHER   # regime di lavoro dello switch
+from ryu.controller.handler import set_ev_cls   # gestore degli eventi
 from ryu.lib.packet import packet, ethernet, ipv4, arp  # permettono di analizzare i dati all'interno del pacchtto
 
 
@@ -22,9 +22,9 @@ class LoadBalancer(app_manager.RyuApp):
         self.LB_ip = '10.0.2.0'  # ip associato al load balancer
         self.num_server = 3  # indica il numero di server su cui fare round robin
         self.lista_server = ['00:00:00:00:00:04', '00:00:00:00:00:05', '00:00:00:00:00:06']
-        self.logger.info('######inizializzazione completata')
+        self.IDLE_timeout = 60  # timeout in secondi per le regole di load balancing
 
-        self.host = []
+        self.logger.info('######inizializzazione completata')
 
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
     def packet_in_handler(self, event):
@@ -36,19 +36,20 @@ class LoadBalancer(app_manager.RyuApp):
         ofproto = datapath.ofproto  # versione di ofp usata nell'handshake (versione attesa 1.3)
         parser = datapath.ofproto_parser
 
-        ethframe = pacchetto.get_protocol(ethernet.ethernet)
+        ethframe = pacchetto.get_protocol(ethernet.ethernet)    # estrazione del frame ethernet
 
         if ethframe.ethertype != 0x86dd:    # escludo pacchetti ipv6 di configurazione scabiati all'avvio della topologia
 
             if datapath.id == 2:    # se siamo nello switch 2
 
                 if ethframe.ethertype == 2054:  # se ho un pacchetto arp
-                    arpframe = pacchetto.get_protocol(arp.arp)
+                    arpframe = pacchetto.get_protocol(arp.arp)  # estrazione del frame arp
 
-                    if arpframe.dst_ip == self.LB_ip and arpframe.opcode == 1:
+                    if arpframe.dst_ip == self.LB_ip and arpframe.opcode == 1:  # opcode = 1 indica una arp-request
                         src_mac = arpframe.src_mac  # mac di origine da usare come destinazione nella arp reply
                         src_ip = arpframe.src_ip  # ip di origine da usare come destinazione nella arp reply
 
+                        # funzione di round robin ed estrazione delle altre informazioni sul server scelto
                         server_mac = self.round_robin()
                         server_port = self.topologia[datapath.id][server_mac][0]
                         server_ip = self.topologia[datapath.id][server_mac][1]
@@ -66,7 +67,9 @@ class LoadBalancer(app_manager.RyuApp):
                         reply.add_protocol(ethframe_reply)
                         reply.add_protocol(arp_reply_pkt)
                         reply.serialize()
-                        self.logger.info(reply)
+                        # DEBUG -> print della arp reply
+                        # self.logger.info(reply)
+
                         # uscita del pacchetto preparato sulla porta di ingresso
                         actions = [parser.OFPActionOutput(porta_ingresso)]
                         out = parser.OFPPacketOut(datapath=datapath, in_port=ofproto.OFPP_ANY, data=reply.data,
@@ -79,19 +82,19 @@ class LoadBalancer(app_manager.RyuApp):
                         actions1 = [parser.OFPActionSetField(ipv4_dst=server_ip),
                                     parser.OFPActionSetField(eth_dst=server_mac),
                                     parser.OFPActionOutput(server_port)]
-                        self.add_flow(datapath, 3, match1, actions1, 120)
+                        self.add_flow(datapath, 3, match1, actions1, self.IDLE_timeout)
 
                         match2 = parser.OFPMatch(eth_type=2048, eth_src=server_mac, eth_dst=src_mac, ipv4_src=server_ip,
                                                  ipv4_dst=src_ip)
                         actions2 = [parser.OFPActionSetField(ipv4_src=self.LB_ip),
                                     parser.OFPActionSetField(eth_src=self.LB_mac),
                                     parser.OFPActionOutput(porta_ingresso)]
-                        self.add_flow(datapath, 3, match2, actions2, 120)
+                        self.add_flow(datapath, 3, match2, actions2, self.IDLE_timeout)
 
-            # self.get_frame(pacchetto, datapath, porta_ingresso, ethframe)
+            self.get_frame(pacchetto, datapath, porta_ingresso, ethframe)
             self.set_topologia(pacchetto, porta_ingresso, datapath)
 
-            if ethframe.ethertype != 34525 and ethframe.dst in self.topologia[datapath.id]:
+            if ethframe.dst in self.topologia[datapath.id]:
                 porta_uscita = self.topologia[datapath.id][ethframe.dst][0]
             else:
                 porta_uscita = ofproto.OFPP_FLOOD
@@ -115,15 +118,16 @@ class LoadBalancer(app_manager.RyuApp):
         ofproto = datapath.ofproto
         parser = datapath.ofproto_parser
 
-        # match: ANY, actions: out al controllore e FLOOD del pacchetto
+        # regola di default -> match: ANY, actions:out al controllore
         match = parser.OFPMatch()
         actions = [parser.OFPActionOutput(ofproto.OFPP_CONTROLLER, ofproto.OFPCML_NO_BUFFER)]
 
         # chiamata alla funzione add_flow che crea una flow rule con i parametri inseriti
         self.add_flow(datapath, 1, match, actions, 0)
 
+        # regola di forewarding dei pacchetti destinati al load balancer per lo switch 1
         if datapath.id == 1:
-            match = parser.OFPMatch(eth_type=2048, ipv4_dst='10.0.2.0')
+            match = parser.OFPMatch(eth_type=2048, ipv4_dst=self.LB_ip)
             actions = [parser.OFPActionOutput(4)]
             self.add_flow(datapath, 2, match, actions, 0)
 
@@ -140,7 +144,7 @@ class LoadBalancer(app_manager.RyuApp):
                                 match=match, instructions=inst, idle_timeout=idle_timeout)
         datapath.send_msg(out)
 
-    # funzione che stampa a schermo le informazioni dei protocolli contenuti in un pacchetto
+    # DEBUG/ANALISI -> funzione che stampa a schermo le informazioni dei protocolli contenuti in un pacchetto
     def get_frame(self, pacchetto, datapath, porta_ingresso, ethframe):
         # self.logger.info('eht frame: %s', ethframe)
 
@@ -180,14 +184,16 @@ class LoadBalancer(app_manager.RyuApp):
         self.topologia.setdefault(datapath.id, {})
         self.topologia[datapath.id][ethframe.src] = [porta_ingresso, ip]
 
-        # self.logger.info(self.topologia)
-        # self.logger.info('\n\n')
+        # DEBUG -> stampa a schermo il dizionario topologia contenete mac, ip e porta di ogni host divisi per switch
+        self.logger.info(self.topologia)
+        self.logger.info('\n\n')
 
+    # funzione che sceglie il server ad ogni arp request utilizzando round robin
     def round_robin(self):
         server_scelto = self.round_robin_counter % self.num_server  # resto della divisione intera
-        self.round_robin_counter = self.round_robin_counter + 1
+        self.round_robin_counter = self.round_robin_counter + 1     # incremento contatore
 
         if self.round_robin_counter == 3000:  # serve a non avere un contatore troppo grande
             self.round_robin_counter = 0
 
-        return self.lista_server[server_scelto]
+        return self.lista_server[server_scelto]     # ritorna il mac del server scelto
