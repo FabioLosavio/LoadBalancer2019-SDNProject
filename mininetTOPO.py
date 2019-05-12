@@ -8,7 +8,9 @@
 #
 # Gli host h1,h2,h3 generano traffico verso gli host hs1,hs2,hs3 usati come server. Lo switch s1 serve solo per
 # incanalare il traffico in ingresso allo switch slb che effettuerà il load balance tra i server.
-
+#
+# lanciare la topologia con il comando:
+# sudo mn --custom /vagrant/sdn-lab/mininetTOPO.py --topo LBNet --mac --controller=remote
 
 from mininet.topo import Topo
 

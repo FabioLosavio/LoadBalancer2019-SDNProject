@@ -1,3 +1,6 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
 # Il programma esegue il load balancing su num_server i quali mac sono specificati nella lista lista_server utilizzando
 # la politica di Round Robin. La topologia da utilizzare si attiva con il comando
 # sudo mn --custom /vagrant/sdn-lab/mininetTOPO.py --topo LBNet --mac --controller=remote
@@ -7,7 +10,7 @@ from ryu.controller import ofp_event    # eventi openflow
 from ryu.ofproto import ofproto_v1_3    # versione di protocollo
 from ryu.controller.handler import MAIN_DISPATCHER, CONFIG_DISPATCHER   # regime di lavoro dello switch
 from ryu.controller.handler import set_ev_cls   # gestore degli eventi
-from ryu.lib.packet import packet, ethernet, ipv4, arp  # permettono di analizzare i dati all'interno del pacchtto
+from ryu.lib.packet import packet, ethernet, ipv4, arp  # permettono di analizzare i dati all'interno del pacchtto 
 
 
 class LoadBalancer(app_manager.RyuApp):
