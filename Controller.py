@@ -41,80 +41,81 @@ class LoadBalancer(app_manager.RyuApp):
 
         ethframe = pacchetto.get_protocol(ethernet.ethernet)    # estrazione del frame ethernet
 
-        if ethframe.ethertype != 0x86dd:    # escludo pacchetti ipv6 di configurazione scabiati all'avvio della topologia
+        if ethframe is not None:
+            if ethframe.ethertype != 0x86dd:    # escludo pacchetti ipv6 di configurazione scabiati all'avvio della topologia
 
-            if datapath.id == 2:    # se siamo nello switch 2
+                if datapath.id == 2:    # se siamo nello switch 2
 
-                if ethframe.ethertype == 2054:  # se ho un pacchetto arp
-                    arpframe = pacchetto.get_protocol(arp.arp)  # estrazione del frame arp
+                    if ethframe.ethertype == 2054:  # se ho un pacchetto arp
+                        arpframe = pacchetto.get_protocol(arp.arp)  # estrazione del frame arp
 
-                    if arpframe.dst_ip == self.LB_ip and arpframe.opcode == 1:  # opcode = 1 indica una arp-request
-                        src_mac = arpframe.src_mac  # mac di origine da usare come destinazione nella arp reply
-                        src_ip = arpframe.src_ip  # ip di origine da usare come destinazione nella arp reply
+                        if arpframe.dst_ip == self.LB_ip and arpframe.opcode == 1:  # opcode = 1 indica una arp-request
+                            src_mac = arpframe.src_mac  # mac di origine da usare come destinazione nella arp reply
+                            src_ip = arpframe.src_ip  # ip di origine da usare come destinazione nella arp reply
 
-                        # funzione di round robin ed estrazione delle altre informazioni sul server scelto
-                        server_mac = self.round_robin()
-                        server_port = self.topologia[datapath.id][server_mac][0]
-                        server_ip = self.topologia[datapath.id][server_mac][1]
+                            # funzione di round robin ed estrazione delle altre informazioni sul server scelto
+                            server_mac = self.round_robin()
+                            server_port = self.topologia[datapath.id][server_mac][0]
+                            server_ip = self.topologia[datapath.id][server_mac][1]
 
-                        self.logger.info('invio ARP REPLY del LB')
-                        reply = packet.Packet()  # costruzione di un paccehtto vuoto
-                        # costrzione del frame ethernet per la reply (dst,src,ethertype)
-                        ethframe_reply = ethernet.ethernet(src_mac, self.LB_mac, 2054)
-                        # costruzione del frame arp per la reply i parametri inseriti sono:
-                        # (1 -> hwtype per ethernet, 0x800 -> proto per indicare IP, 6 -> lunghezza indirizzo MAC,
-                        # 4 -> lunghezza indirizzo IP, 2 -> opcode per indicare arp reply, src_mac, src_ip, dst_mac, dst_ip)
-                        arp_reply_pkt = arp.arp(1, 0x800, 6, 4, 2, self.LB_mac, self.LB_ip, src_mac, src_ip)  #
+                            self.logger.info('invio ARP REPLY del LB')
+                            reply = packet.Packet()  # costruzione di un paccehtto vuoto
+                            # costrzione del frame ethernet per la reply (dst,src,ethertype)
+                            ethframe_reply = ethernet.ethernet(src_mac, self.LB_mac, 2054)
+                            # costruzione del frame arp per la reply i parametri inseriti sono:
+                            # (1 -> hwtype per ethernet, 0x800 -> proto per indicare IP, 6 -> lunghezza indirizzo MAC,
+                            # 4 -> lunghezza indirizzo IP, 2 -> opcode per indicare arp reply, src_mac, src_ip, dst_mac, dst_ip)
+                            arp_reply_pkt = arp.arp(1, 0x800, 6, 4, 2, self.LB_mac, self.LB_ip, src_mac, src_ip)  #
 
-                        # aggiunta dei protocolli al pacchetto
-                        reply.add_protocol(ethframe_reply)
-                        reply.add_protocol(arp_reply_pkt)
-                        reply.serialize()
-                        # DEBUG -> print della arp reply
-                        # self.logger.info(reply)
+                            # aggiunta dei protocolli al pacchetto
+                            reply.add_protocol(ethframe_reply)
+                            reply.add_protocol(arp_reply_pkt)
+                            reply.serialize()
+                            # DEBUG -> print della arp reply
+                            # self.logger.info(reply)
 
-                        # uscita del pacchetto preparato sulla porta di ingresso
-                        actions = [parser.OFPActionOutput(porta_ingresso)]
-                        out = parser.OFPPacketOut(datapath=datapath, in_port=ofproto.OFPP_ANY, data=reply.data,
-                                                  actions=actions,
-                                                  buffer_id=0xffffffff)
-                        datapath.send_msg(out)
+                            # uscita del pacchetto preparato sulla porta di ingresso
+                            actions = [parser.OFPActionOutput(porta_ingresso)]
+                            out = parser.OFPPacketOut(datapath=datapath, in_port=ofproto.OFPP_ANY, data=reply.data,
+                                                      actions=actions,
+                                                      buffer_id=0xffffffff)
+                            datapath.send_msg(out)
 
-                        # flow rule di andata che traduce ip e mac dst del LB con quelli del server scelto
-                        match1 = parser.OFPMatch(eth_type=2048, eth_src=src_mac, eth_dst=self.LB_mac, ipv4_src=src_ip,
-                                                 ipv4_dst=self.LB_ip)
-                        actions1 = [parser.OFPActionSetField(ipv4_dst=server_ip),
-                                    parser.OFPActionSetField(eth_dst=server_mac),
-                                    parser.OFPActionOutput(server_port)]
-                        self.add_flow(datapath, 3, match1, actions1, self.IDLE_timeout)
+                            # flow rule di andata che traduce ip e mac dst del LB con quelli del server scelto
+                            match1 = parser.OFPMatch(eth_type=2048, eth_src=src_mac, eth_dst=self.LB_mac, ipv4_src=src_ip,
+                                                     ipv4_dst=self.LB_ip)
+                            actions1 = [parser.OFPActionSetField(ipv4_dst=server_ip),
+                                        parser.OFPActionSetField(eth_dst=server_mac),
+                                        parser.OFPActionOutput(server_port)]
+                            self.add_flow(datapath, 3, match1, actions1, self.IDLE_timeout)
 
-                        # flow rule di ritorno che traduce ip e mac sorgenrte del server con quelli del LB
-                        match2 = parser.OFPMatch(eth_type=2048, eth_src=server_mac, eth_dst=src_mac, ipv4_src=server_ip,
-                                                 ipv4_dst=src_ip)
-                        actions2 = [parser.OFPActionSetField(ipv4_src=self.LB_ip),
-                                    parser.OFPActionSetField(eth_src=self.LB_mac),
-                                    parser.OFPActionOutput(porta_ingresso)]
-                        self.add_flow(datapath, 3, match2, actions2, self.IDLE_timeout)
+                            # flow rule di ritorno che traduce ip e mac sorgenrte del server con quelli del LB
+                            match2 = parser.OFPMatch(eth_type=2048, eth_src=server_mac, eth_dst=src_mac, ipv4_src=server_ip,
+                                                     ipv4_dst=src_ip)
+                            actions2 = [parser.OFPActionSetField(ipv4_src=self.LB_ip),
+                                        parser.OFPActionSetField(eth_src=self.LB_mac),
+                                        parser.OFPActionOutput(porta_ingresso)]
+                            self.add_flow(datapath, 3, match2, actions2, self.IDLE_timeout)
 
-            # self.get_frame(pacchetto, datapath, porta_ingresso, ethframe)     #DEBUG-> print farme pacchetti
-            self.set_topologia(pacchetto, porta_ingresso, datapath)
+                # self.get_frame(pacchetto, datapath, porta_ingresso, ethframe)     #DEBUG-> print farme pacchetti
+                self.set_topologia(pacchetto, porta_ingresso, datapath)
 
-            if ethframe.dst in self.topologia[datapath.id]:     # se la destinazione è presente nella struttura della topologia
-                porta_uscita = self.topologia[datapath.id][ethframe.dst][0]     # estrae la porta associata
-            else:
-                porta_uscita = ofproto.OFPP_FLOOD   # manda in FLOOD se non conosce la porta di uscita associata al mac
+                if ethframe.dst in self.topologia[datapath.id]:     # se la destinazione è presente nella struttura della topologia
+                    porta_uscita = self.topologia[datapath.id][ethframe.dst][0]     # estrae la porta associata
+                else:
+                    porta_uscita = ofproto.OFPP_FLOOD   # manda in FLOOD se non conosce la porta di uscita associata al mac
 
-            actions = [parser.OFPActionOutput(porta_uscita)]
+                actions = [parser.OFPActionOutput(porta_uscita)]
 
-            # se è stata determinata una porta di uscita instaura una regola per evitare FLOOD le volte successive
-            if porta_uscita != ofproto.OFPP_FLOOD:
-                match = parser.OFPMatch(eth_dst=ethframe.dst)
-                self.add_flow(datapath, 2, match, actions, 0)
+                # se è stata determinata una porta di uscita instaura una regola per evitare FLOOD le volte successive
+                if porta_uscita != ofproto.OFPP_FLOOD:
+                    match = parser.OFPMatch(eth_dst=ethframe.dst)
+                    self.add_flow(datapath, 2, match, actions, 0)
 
-            # creazione del pacchetto di uscita
-            out = parser.OFPPacketOut(datapath=datapath, buffer_id=msg.buffer_id, in_port=porta_ingresso,
-                                      actions=actions, data=msg.data)
-            datapath.send_msg(out)  # packet out
+                # creazione del pacchetto di uscita
+                out = parser.OFPPacketOut(datapath=datapath, buffer_id=msg.buffer_id, in_port=porta_ingresso,
+                                          actions=actions, data=msg.data)
+                datapath.send_msg(out)  # packet out
 
     @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)
     def switch_features_handler(self, ev):
